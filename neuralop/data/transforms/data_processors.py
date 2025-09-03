@@ -1,8 +1,8 @@
 from abc import ABCMeta, abstractmethod
+from typing import Dict, Any
 
 import torch
 from neuralop.training.patching import MultigridPatching2D
-
 
 import torch
 from neuralop.training.patching import MultigridPatching2D
@@ -45,13 +45,13 @@ class DataProcessor(torch.nn.Module, metaclass=ABCMeta):
     def wrap(self, model):
         self.model = model
         return self
-    
+
     # default train and eval methods
-    def train(self, val: bool=True):
+    def train(self, val: bool = True):
         super().train(val)
         if self.model is not None:
             self.model.train()
-    
+
     def eval(self):
         super().eval()
         if self.model is not None:
@@ -61,12 +61,14 @@ class DataProcessor(torch.nn.Module, metaclass=ABCMeta):
     def forward(self, x):
         pass
 
+
 class DefaultDataProcessor(DataProcessor):
     """DefaultDataProcessor is a simple processor 
     to pre/post process data before training/inferencing a model.
     """
+
     def __init__(
-        self, in_normalizer=None, out_normalizer=None
+            self, in_normalizer=None, out_normalizer=None
     ):
         """
         Parameters
@@ -161,13 +163,12 @@ class DefaultDataProcessor(DataProcessor):
         output = self.model(data_dict["x"])
         output = self.postprocess(output)
         return output, data_dict
-        
 
 
 class IncrementalDataProcessor(torch.nn.Module):
-    def __init__(self, 
-                 in_normalizer=None, out_normalizer=None, device = 'cpu',
-                 subsampling_rates=[2, 1], dataset_resolution=16, dataset_indices=[2,3], epoch_gap=10, verbose=False):
+    def __init__(self,
+                 in_normalizer=None, out_normalizer=None, device='cpu',
+                 subsampling_rates=[2, 1], dataset_resolution=16, dataset_indices=[2, 3], epoch_gap=10, verbose=False):
         """An incremental processor to pre/post process data before training/inferencing a model
         In particular this processor first regularizes the input resolution based on the sub_list and dataset_indices
         in the spatial domain based on a fixed number of epochs. We incrementally increase the resolution like done 
@@ -203,12 +204,12 @@ class IncrementalDataProcessor(torch.nn.Module):
         self.epoch_gap = epoch_gap
         self.verbose = verbose
         self.epoch = 0
-        
+
         self.current_index = 0
         self.current_logged_epoch = 0
         self.current_sub = self.index_to_sub_from_table(self.current_index)
-        self.current_res = int(self.dataset_resolution / self.current_sub)   
-        
+        self.current_res = int(self.dataset_resolution / self.current_sub)
+
         print(f'Original Incre Res: change index to {self.current_index}')
         print(f'Original Incre Res: change sub to {self.current_sub}')
         print(f'Original Incre Res: change res to {self.current_res}')
@@ -220,7 +221,7 @@ class IncrementalDataProcessor(torch.nn.Module):
             self.out_normalizer = self.out_normalizer.to(device)
         self.device = device
         return self
-    
+
     def epoch_wise_res_increase(self, epoch):
         # Update the current_sub and current_res values based on the epoch
         if epoch % self.epoch_gap == 0 and epoch != 0 and (
@@ -249,12 +250,12 @@ class IncrementalDataProcessor(torch.nn.Module):
             x = x.index_select(dim=idx, index=indexes)
             y = y.index_select(dim=idx, index=indexes)
         return x, y
-    
+
     def step(self, loss=None, epoch=None, x=None, y=None):
         if x is not None and y is not None:
             self.epoch_wise_res_increase(epoch)
             return self.regularize_input_res(x, y)
-        
+
     def preprocess(self, data_dict, batched=True):
         x = data_dict['x'].to(self.device)
         y = data_dict['y'].to(self.device)
@@ -263,14 +264,14 @@ class IncrementalDataProcessor(torch.nn.Module):
             x = self.in_normalizer.transform(x)
         if self.out_normalizer is not None and self.train:
             y = self.out_normalizer.transform(y)
-        
+
         if self.training:
             x, y = self.step(epoch=self.epoch, x=x, y=y)
-        
+
         data_dict['x'] = x
         data_dict['y'] = y
 
-        return data_dict 
+        return data_dict
 
     def postprocess(self, output, data_dict):
         y = data_dict['y']
@@ -279,24 +280,80 @@ class IncrementalDataProcessor(torch.nn.Module):
             y = self.out_normalizer.inverse_transform(y)
         data_dict['y'] = y
         return output, data_dict
-    
+
     def forward(self, **data_dict):
         data_dict = self.preprocess(data_dict)
         output = self.model(data_dict['x'])
         output = self.postprocess(output)
         return output, data_dict
-    
+
+
+class MultiphysicsDataProcessor(torch.nn.Module, metaclass=ABCMeta):
+    """Multiphysics version of DataProcessor"""
+
+    def __init__(
+            self,
+            in_normalizer,
+            out_normalizer
+    ):
+        super().__init__()
+        self.in_normalizer = in_normalizer
+        self.out_normalizer = out_normalizer
+        self.processors = {}
+
+    def add_processor(self, task_name: str, processor):
+        self.processors[task_name] = processor
+
+    def set_task(self, task_name: str):
+        if task_name not in self.processors:
+            raise ValueError(f"Processor for task '{task_name}' not found!")
+        self.current_task = task_name
+
+    def to(self, device):
+        for processor in self.processors.values():
+            processor.to(device)
+        return self
+
+    def preprocess(self, data_dict, batched=True):
+        if self.current_task is None:
+            raise ValueError("Current task is not installed!")
+        return self.processors[self.current_task].preprocess(data_dict, batched)
+
+    def postprocess(self, output, data_dict):
+        if self.current_task is None:
+            raise ValueError("Current task is not installed!")
+        return self.processors[self.current_task].postprocess(output, data_dict)
+
+    def wrap(self, model):
+        if self.current_task is None:
+            raise ValueError("Current task is not installed!")
+        return self.processors[self.current_task].wrap(model)
+
+    def train(self, val: bool = True):
+        for processor in self.processors.values():
+            processor.train(val)
+
+    def eval(self):
+        for processor in self.processors.values():
+            processor.eval()
+
+    def forward(self, x):
+        if self.current_task is None:
+            raise ValueError("Current task is not installed!")
+        return self.processors[self.current_task].forward(x)
+
+
 class MGPatchingDataProcessor(DataProcessor):
     def __init__(
-        self,
-        model: torch.nn.Module,
-        levels: int,
-        padding_fraction: float,
-        stitching: float,
-        device: str = "cpu",
-        use_distributed: bool=False,
-        in_normalizer=None,
-        out_normalizer=None,
+            self,
+            model: torch.nn.Module,
+            levels: int,
+            padding_fraction: float,
+            stitching: float,
+            device: str = "cpu",
+            use_distributed: bool = False,
+            in_normalizer=None,
+            out_normalizer=None,
     ):
         """MGPatchingDataProcessor
         Applies multigrid patching to inputs out-of-place
@@ -401,4 +458,145 @@ class MGPatchingDataProcessor(DataProcessor):
         data_dict = self.preprocess(data_dict)
         output = self.model(**data_dict)
         output, data_dict = self.postprocess(output, data_dict)
+        return output, data_dict
+
+
+class MultiTaskMGPatchingDataProcessor(DataProcessor):
+    def __init__(
+            self,
+            model: torch.nn.Module,
+            tasks_config: Dict[str, Any],
+            device: str = "cpu"
+    ):
+        """
+        Multitasking version of MGPatchingDataProcessor for working with multiphysics data
+
+        Params
+        ----------
+        model: nn.Module
+            model to wrap in MultigridPatching2D
+        tasks_config : Dict[str, Any]
+            configuration for all tasks, including patching parameters and normalizers
+        device : str, optional
+            device 'cuda' or 'cpu' where computations are performed
+        use_distributed : bool, optional
+            whether to use distributed learning
+        """
+        super().__init__()
+        self.tasks_config = tasks_config
+        self.device = device
+        self.model = model
+
+        self.patchers = {}
+        self.in_normalizers = {}
+        self.out_normalizers = {}
+
+        for task_name, config in tasks_config.items():
+            self.patchers[task_name] = MultigridPatching2D(
+                model=model,
+                levels=config.get('levels', 1),
+                padding_fraction=config.get('padding_fraction', 0.1),
+                stitching=config.get('stitching', True),
+                use_distributed=use_distributed,
+            )
+
+            self.in_normalizers[task_name] = config.get('in_normalizer')
+            self.out_normalizers[task_name] = config.get('out_normalizer')
+
+            if self.in_normalizers[task_name]:
+                self.in_normalizers[task_name] = self.in_normalizers[task_name].to(device)
+            if self.out_normalizers[task_name]:
+                self.out_normalizers[task_name] = self.out_normalizers[task_name].to(device)
+
+        self.current_task = None
+
+    def set_task(self, task_name: str):
+        if task_name not in self.patchers:
+            raise ValueError(f"Patcher for task '{task_name}' not found!")
+        self.current_task = task_name
+
+    def to(self, device):
+        self.device = device
+        for task_name in self.patchers.keys():
+            if self.in_normalizers[task_name]:
+                self.in_normalizers[task_name] = self.in_normalizers[task_name].to(device)
+            if self.out_normalizers[task_name]:
+                self.out_normalizers[task_name] = self.out_normalizers[task_name].to(device)
+        return self
+
+    def preprocess(self, data_dict, batched=True, task_name=None):
+        """
+        Preprocess data assuming that if encoder exists, it has
+        encoded all data during data loading
+
+        Params
+        ------
+
+        data_dict: dict
+            dictionary keyed with 'x', 'y' etc
+            represents one batch of data input to a model
+        batched: bool
+            whether the first dimension of 'x', 'y' represents batching
+        task_name : str, optional
+            name of the task to process (if None, the current task is used)
+        """
+        if task_name is None:
+            if self.current_task is None:
+                raise ValueError("Current task is not installed!")
+            task_name = self.current_task
+
+        data_dict = {
+            k: v.to(self.device) for k, v in data_dict.items() if torch.is_tensor(v)
+        }
+
+        x, y = data_dict["x"], data_dict["y"]
+
+        if self.in_normalizers[task_name]:
+            x = self.in_normalizers[task_name].transform(x)
+        if self.out_normalizers[task_name]:
+            y = self.out_normalizers[task_name].transform(y)
+
+        data_dict["x"], data_dict["y"] = self.patchers[task_name].patch(x, y)
+
+        return data_dict
+
+    def postprocess(self, out, data_dict, task_name=None):
+        """
+        Postprocess model outputs.
+
+        Params
+        ----------
+        out: torch.Tensor
+            model output predictions
+        data_dict : dict
+            dictionary with input data
+        task_name : str, optional
+            name of the task to process (if None, the current task is used)
+        """
+        if task_name is None:
+            if self.current_task is None:
+                raise ValueError("Current task is not installed!")
+            task_name = self.current_task
+
+        y = data_dict["y"]
+
+        out, y = self.patchers[task_name].unpatch(out, y, evaluation=not self.training)
+
+        if self.out_normalizers[task_name]:
+            y = self.out_normalizers[task_name].inverse_transform(y)
+            out = self.out_normalizers[task_name].inverse_transform(out)
+
+        data_dict["y"] = y
+
+        return out, data_dict
+
+    def forward(self, **data_dict):
+        task_name = data_dict.get('task', self.current_task)
+        if task_name is None:
+            raise ValueError("Unable to determine task to process")
+
+        self.set_task(task_name)
+        data_dict = self.preprocess(data_dict, task_name=task_name)
+        output = self.model(**data_dict)
+        output, data_dict = self.postprocess(output, data_dict, task_name=task_name)
         return output, data_dict
