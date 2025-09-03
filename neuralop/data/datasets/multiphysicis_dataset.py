@@ -238,10 +238,10 @@ class MultiphysicsDataset:
             y_train,
         )
 
-        # create DataProcessor
         self._data_processor = MultiphysicsDataProcessor(in_normalizer=self.input_encoder,
                                                          out_normalizer=self.output_encoder)
         self._data_processor.add_processor(physics_name)
+
         # Load test data
         self._test_dbs = {}
         for (res, n_test) in zip(test_resolutions, n_tests):
@@ -264,6 +264,7 @@ class MultiphysicsDataset:
 
             del data
 
+            # Save test dataset
             test_db = TensorDataset(
                 x_test,
                 y_test,

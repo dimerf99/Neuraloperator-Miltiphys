@@ -106,7 +106,7 @@ class MultitaskDataset(MultiphysicsDataset):
         # Once downloaded/if files already exist, init MultiphysicsDataset
         super().__init__(
             root_dir=root_dir,
-            dataset_name=physics_name,
+            physics_name=physics_name,
             n_train=n_train,
             n_tests=n_tests,
             batch_size=batch_size,
