@@ -301,8 +301,8 @@ class MultiphysicsDataProcessor(torch.nn.Module, metaclass=ABCMeta):
         self.out_normalizer = out_normalizer
         self.processors = {}
 
-    def add_processor(self, task_name: str, processor):
-        self.processors[task_name] = processor
+    def add_processor(self, physics_name: str):
+        self.processors[physics_name] = DefaultDataProcessor(self.in_normalizer, self.out_normalizer)
 
     def set_task(self, task_name: str):
         if task_name not in self.processors:
@@ -465,8 +465,13 @@ class MultiTaskMGPatchingDataProcessor(DataProcessor):
     def __init__(
             self,
             model: torch.nn.Module,
-            tasks_config: Dict[str, Any],
-            device: str = "cpu"
+            physics_config: Dict[str, Any],
+            levels: int = 0,
+            padding_fraction: float = 0,
+            use_distributed: bool = False,
+            stitching: bool = True,
+            device: str = "cpu",
+
     ):
         """
         Multitasking version of MGPatchingDataProcessor for working with multiphysics data
@@ -475,15 +480,15 @@ class MultiTaskMGPatchingDataProcessor(DataProcessor):
         ----------
         model: nn.Module
             model to wrap in MultigridPatching2D
-        tasks_config : Dict[str, Any]
-            configuration for all tasks, including patching parameters and normalizers
+        physics_config : Dict[str, Any]
+            configuration for all physics, including patching parameters and normalizers
         device : str, optional
             device 'cuda' or 'cpu' where computations are performed
         use_distributed : bool, optional
             whether to use distributed learning
         """
         super().__init__()
-        self.tasks_config = tasks_config
+        self.physics_config = physics_config
         self.device = device
         self.model = model
 
@@ -491,12 +496,12 @@ class MultiTaskMGPatchingDataProcessor(DataProcessor):
         self.in_normalizers = {}
         self.out_normalizers = {}
 
-        for task_name, config in tasks_config.items():
+        for task_name, config in physics_config.items():
             self.patchers[task_name] = MultigridPatching2D(
                 model=model,
-                levels=config.get('levels', 1),
-                padding_fraction=config.get('padding_fraction', 0.1),
-                stitching=config.get('stitching', True),
+                levels=levels,
+                padding_fraction=padding_fraction,
+                stitching=stitching,
                 use_distributed=use_distributed,
             )
 
