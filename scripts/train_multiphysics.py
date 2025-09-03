@@ -1,6 +1,3 @@
-from pathlib import Path
-import sys
-
 import torch
 
 from torch.utils.data import DataLoader, DistributedSampler
@@ -10,12 +7,11 @@ from neuralop.losses.data_losses import H1Loss, LpLoss
 from neuralop.models.base_model import get_model
 from neuralop.training.trainer import Trainer
 from neuralop.data.datasets.multiphysics_wrapper import load_data
-from neuralop.data.transforms.data_processors import MGPatchingDataProcessor, MultiTaskMGPatchingDataProcessor
+from neuralop.data.transforms.data_processors import MultiTaskMGPatchingDataProcessor
 from neuralop.training import setup, AdamW
 from neuralop.mpu.comm import get_local_rank
 from neuralop.utils import get_wandb_api_key, count_model_params, get_project_root
 
-# Read the configuration
 from zencfg import make_config_from_cli
 import sys
 
@@ -27,10 +23,8 @@ def main():
     config = make_config_from_cli(Default)
     config = config.to_dict()
 
-    # Set-up distributed communication, if using
     device, is_logger = setup(config)
 
-    # Set up WandB logging
     wandb_args = None
     if config.wandb.log and is_logger:
         wandb.login(key=get_wandb_api_key())
@@ -58,16 +52,13 @@ def main():
                 config.params[key] = wandb.config[key]
         wandb.init(**wandb_args)
 
-    # Make sure we only print information when needed
     config.verbose = config.verbose and is_logger
 
-    # Print config to screen
     if config.verbose and is_logger:
         print(f"##### CONFIG #####\n")
         print(config)
         sys.stdout.flush()
 
-    # Create the multiphysics data
     multiphysics_data = {}
 
     for task_name in list(config.data.datasets.keys()):
@@ -81,13 +72,14 @@ def main():
             'train_resolution': task_config.train_resolution,
             'test_resolutions': task_config.test_resolutions,
             'test_batch_sizes': task_config.test_batch_sizes,
+            'interpolate_mode': task_config.interpolate_mode,
             'data_root': data_root,
             'encode_input': task_config.encode_input,
             'encode_output': task_config.encode_output,
             'task_name': task_name,
             'download_params': task_config.download_params,
-            # 'spatial_length': task_config.spatial_length,
-            # 'temporal_length': task_config.temporal_length,
+            'temporal_subsample': task_config.temporal_subsample,
+            'spatial_subsample': task_config.spatial_subsample,
         }
 
         train_loader, test_loaders, data_processor = load_data(**task_config_full)
@@ -100,35 +92,6 @@ def main():
 
     model = get_model(config)
 
-    # Correct object example
-    multiphysics_data_example = {
-        'Task 1': {
-            'train_loader': None,
-            'test_loader': {None},
-            'data_processor': None,
-        },
-
-        # ...
-
-        'Task N': {
-            'train_loader': None,
-            'test_loader': {None},
-            'data_processor': None,
-        }
-    }
-
-    # if config.patching.levels > 0:
-    #     task_data['data_processor'] = MGPatchingDataProcessor(
-    #         model=model,
-    #         in_normalizer=task_data['data_processor'].in_normalizer,
-    #         out_normalizer=task_data['data_processor'].out_normalizer,
-    #         padding_fraction=config.patching.padding,
-    #         stitching=config.patching.stitching,
-    #         levels=config.patching.levels,
-    #         use_distributed=config.distributed.use_distributed,
-    #         device=device
-    #     )
-
     for task_name, task_data in multiphysics_data.items():
         if config.patching.levels > 0:
             task_data['data_processor'] = MultiTaskMGPatchingDataProcessor(
@@ -136,11 +99,6 @@ def main():
                 tasks_config=task_config,
                 device=device
             )
-
-            # model: torch.nn.Module,
-            # tasks_config: Dict[str, Any],
-            # device: str = "cpu",
-            # use_distributed: bool = False
 
     if config.distributed.use_distributed:
         for task_name, task_data in multiphysics_data.items():
@@ -174,7 +132,6 @@ def main():
         if 'config' in task_data:
             del task_data['config']
 
-    # Create the optimizer
     optimizer = AdamW(
         model.parameters(),
         lr=config.opt.learning_rate,
@@ -199,7 +156,6 @@ def main():
     else:
         raise ValueError(f"Got scheduler={config.opt.scheduler}")
 
-    # Creating the losses
     l2loss = LpLoss(d=2, p=2)
     h1loss = H1Loss(d=2)
     if config.opt.training_loss == "l2":
@@ -222,8 +178,6 @@ def main():
         print(f"\n * Test: {eval_losses}")
         print(f"\n### Beginning Training...\n")
         sys.stdout.flush()
-
-    ########################################################################################
 
     trainer = Trainer(
         model=model,
@@ -255,7 +209,6 @@ def main():
             wandb.log(to_log, commit=False)
             wandb.watch(model)
 
-    # Train the model
     trainer.train(
         train_loader=train_loader,
         test_loaders=test_loaders,
