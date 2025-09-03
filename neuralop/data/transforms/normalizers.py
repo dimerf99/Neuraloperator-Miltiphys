@@ -4,6 +4,7 @@ from ...utils import count_tensor_params
 from .base_transforms import Transform, DictTransform
 import torch
 
+
 class Normalizer(Transform):
     def __init__(self, mean, std, eps=1e-6):
         self.mean = mean
@@ -11,15 +12,15 @@ class Normalizer(Transform):
         self.eps = eps
 
     def transform(self, data):
-        return (data - self.mean)/(self.std + self.eps)
-    
+        return (data - self.mean) / (self.std + self.eps)
+
     def inverse_transform(self, data):
         return (data * (self.std + self.eps)) + self.mean
 
     def to(self, device):
         self.mean = self.mean.to(device)
         self.std = self.std.to(device)
-    
+
     def cuda(self):
         self.mean = self.mean.cuda()
         self.std = self.std.cuda()
@@ -27,6 +28,7 @@ class Normalizer(Transform):
     def cpu(self):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
+
 
 class UnitGaussianNormalizer(Transform):
     """
@@ -87,7 +89,7 @@ class UnitGaussianNormalizer(Transform):
         count = 0
         n_samples = len(data_batch)
         while count < n_samples:
-            samples = data_batch[count : count + batch_size]
+            samples = data_batch[count: count + batch_size]
             # print(samples.shape)
             # if batch_size == 1:
             #     samples = samples.unsqueeze(0)
@@ -102,7 +104,7 @@ class UnitGaussianNormalizer(Transform):
         if self.mask is None:
             self.n_elements = count_tensor_params(data_batch, self.dim)
             self.mean = torch.mean(data_batch, dim=self.dim, keepdim=True)
-            self.squared_mean = torch.mean(data_batch**2, dim=self.dim, keepdim=True)
+            self.squared_mean = torch.mean(data_batch ** 2, dim=self.dim, keepdim=True)
             self.std = torch.std(data_batch, dim=self.dim, keepdim=True)
         else:
             batch_size = data_batch.shape[0]
@@ -114,10 +116,10 @@ class UnitGaussianNormalizer(Transform):
             self.squared_mean = torch.zeros(shape)
             data_batch[:, self.mask == 1] = 0
             self.mean[self.mask == 1] = (
-                torch.sum(data_batch, dim=dim, keepdim=True) / self.n_elements
+                    torch.sum(data_batch, dim=dim, keepdim=True) / self.n_elements
             )
             self.squared_mean = (
-                torch.sum(data_batch**2, dim=dim, keepdim=True) / self.n_elements
+                    torch.sum(data_batch ** 2, dim=dim, keepdim=True) / self.n_elements
             )
             self.std = torch.std(data_batch, dim=self.dim, keepdim=True)
 
@@ -131,18 +133,18 @@ class UnitGaussianNormalizer(Transform):
             data_batch[:, self.mask == 1] = 0
 
         self.mean = (1.0 / (self.n_elements + n_elements)) * (
-            self.n_elements * self.mean + torch.sum(data_batch, dim=dim, keepdim=True)
+                self.n_elements * self.mean + torch.sum(data_batch, dim=dim, keepdim=True)
         )
         self.squared_mean = (1.0 / (self.n_elements + n_elements)) * (
-            self.n_elements * self.squared_mean
-            + torch.sum(data_batch**2, dim=dim, keepdim=True)
+                self.n_elements * self.squared_mean
+                + torch.sum(data_batch ** 2, dim=dim, keepdim=True)
         )
         self.n_elements += n_elements
 
         # 1/(n_i + n_j) * (n_i * sum(x_i^2)/n_i + sum(x_j^2) - (n_i*sum(x_i)/n_i + sum(x_j))^2)
         # = 1/(n_i + n_j)  * (sum(x_i^2) + sum(x_j^2) - sum(x_i)^2 - 2sum(x_i)sum(x_j) - sum(x_j)^2))
         # multiply by (n_i + n_j) / (n_i + n_j + 1) for unbiased estimator
-        self.std = torch.sqrt(self.squared_mean - self.mean**2) * self.n_elements / (self.n_elements - 1)
+        self.std = torch.sqrt(self.squared_mean - self.mean ** 2) * self.n_elements / (self.n_elements - 1)
 
     def transform(self, x):
         return (x - self.mean) / (self.std + self.eps)
@@ -194,6 +196,7 @@ class UnitGaussianNormalizer(Transform):
                     instances[key].partial_fit(sample.unsqueeze(0))
         return instances
 
+
 class DictUnitGaussianNormalizer(DictTransform):
     """DictUnitGaussianNormalizer composes
     DictTransform and UnitGaussianNormalizer to normalize different
@@ -209,7 +212,8 @@ class DictUnitGaussianNormalizer(DictTransform):
         return_mappings : Dict[slice]
             _description_
         """
-    def __init__(self, 
+
+    def __init__(self,
                  normalizer_dict: Dict[str, UnitGaussianNormalizer],
                  input_mappings: Dict[str, slice],
                  return_mappings: Dict[str, slice]):
@@ -221,7 +225,7 @@ class DictUnitGaussianNormalizer(DictTransform):
         super().__init__(transform_dict=normalizer_dict,
                          input_mappings=input_mappings,
                          return_mappings=return_mappings)
-    
+
     @classmethod
     def from_dataset(cls, dataset, dim=None, keys=None, mask=None):
         """Return a dictionary of normalizer instances, fitted on the given dataset
@@ -247,3 +251,50 @@ class DictUnitGaussianNormalizer(DictTransform):
                 if key in keys:
                     instances[key].partial_fit(sample.unsqueeze(0))
         return instances
+
+
+class MultiphysicsUnitGaussianNormalizer(Transform):
+    """Multiphysics version of UnitGaussianNormalizer"""
+
+    def __init__(self):
+        super().__init__()
+        self.normalizers = {}
+        self.current_task = None
+
+    def add_task(self, task_name: str, dim=None, mask=None):
+        self.normalizers[task_name] = UnitGaussianNormalizer(dim=dim, mask=mask)
+
+    def set_task(self, task_name: str):
+        if task_name not in self.normalizers:
+            raise ValueError(f"Normalizer for task '{task_name}' not found!")
+        self.current_task = task_name
+
+    def fit(self, data_batch):
+        if self.current_task is None:
+            raise ValueError("Current task is not installed!")
+        self.normalizers[self.current_task].fit(data_batch)
+
+    def transform(self, x):
+        if self.current_task is None:
+            raise ValueError("Current task is not installed!")
+        return self.normalizers[self.current_task].transform(x)
+
+    def inverse_transform(self, x):
+        if self.current_task is None:
+            raise ValueError("Current task is not installed!")
+        return self.normalizers[self.current_task].inverse_transform(x)
+
+    def to(self, device):
+        for normalizer in self.normalizers.values():
+            normalizer.to(device)
+        return self
+
+    def cuda(self):
+        for normalizer in self.normalizers.values():
+            normalizer.cuda()
+        return self
+
+    def cpu(self):
+        for normalizer in self.normalizers.values():
+            normalizer.cpu()
+        return self
