@@ -116,7 +116,6 @@ class MultiphysicsDataset:
 
     def __init__(self,
                  root_dir: Union[Path, str],
-                 dataset_name: str,
                  n_train: int,
                  n_tests: List[int],
                  batch_size: int,
@@ -130,7 +129,8 @@ class MultiphysicsDataset:
                  input_subsampling_rate=None,
                  output_subsampling_rate=None,
                  channel_dim=1,
-                 channels_squeezed=True):
+                 channels_squeezed=True,
+                 physics_name: str = None):
         """MultiphysicsDataset
 
         Parameters
@@ -183,7 +183,7 @@ class MultiphysicsDataset:
         self.test_batch_sizes = test_batch_sizes
 
         # Load train data
-        data = load_data(root_dir, dataset_name, 'train', train_resolution, file_format='.pt')
+        data = load_data(root_dir, physics_name, 'train', train_resolution, file_format='.pt')
 
         data["x"] = resize_to_common_grid(data["x"], train_resolution, interpolate_mode)
         data["y"] = resize_to_common_grid(data["y"], train_resolution, interpolate_mode)
@@ -210,8 +210,8 @@ class MultiphysicsDataset:
             if not hasattr(self, 'input_normalizer'):
                 self.input_encoder = MultiphysicsUnitGaussianNormalizer()
 
-            self.input_encoder.add_task(dataset_name, dim=reduce_dims)
-            self.input_encoder.set_task(dataset_name)
+            self.input_encoder.add_task(physics_name, dim=reduce_dims)
+            self.input_encoder.set_task(physics_name)
             self.input_encoder.fit(x_train)
         else:
             self.input_encoder = None
@@ -226,8 +226,8 @@ class MultiphysicsDataset:
             if not hasattr(self, 'output_normalizer'):
                 self.output_encoder = MultiphysicsUnitGaussianNormalizer()
 
-            self.output_encoder.add_task(dataset_name, dim=reduce_dims)
-            self.output_encoder.set_task(dataset_name)
+            self.output_encoder.add_task(physics_name, dim=reduce_dims)
+            self.output_encoder.set_task(physics_name)
             self.output_encoder.fit(y_train)
         else:
             self.output_encoder = None
@@ -241,12 +241,13 @@ class MultiphysicsDataset:
         # create DataProcessor
         self._data_processor = MultiphysicsDataProcessor(in_normalizer=self.input_encoder,
                                                          out_normalizer=self.output_encoder)
+        self._data_processor.add_processor(physics_name)
         # Load test data
         self._test_dbs = {}
         for (res, n_test) in zip(test_resolutions, n_tests):
             print(f"Loading test db for resolution {res} with {n_test} samples ")
 
-            data = load_data(root_dir, dataset_name, 'test', res, file_format='.pt')
+            data = load_data(root_dir, physics_name, 'test', res, file_format='.pt')
 
             data["x"] = resize_to_common_grid(data["x"], res, interpolate_mode)
             data["y"] = resize_to_common_grid(data["y"], res, interpolate_mode)

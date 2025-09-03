@@ -299,15 +299,16 @@ class MultiphysicsDataProcessor(torch.nn.Module, metaclass=ABCMeta):
         super().__init__()
         self.in_normalizer = in_normalizer
         self.out_normalizer = out_normalizer
+        self.current_physics = None
         self.processors = {}
 
     def add_processor(self, physics_name: str):
         self.processors[physics_name] = DefaultDataProcessor(self.in_normalizer, self.out_normalizer)
 
-    def set_task(self, task_name: str):
-        if task_name not in self.processors:
-            raise ValueError(f"Processor for task '{task_name}' not found!")
-        self.current_task = task_name
+    def set_task(self, physics_name: str):
+        if physics_name not in self.processors:
+            raise ValueError(f"Processor for task '{physics_name}' not found!")
+        self.current_physics = physics_name
 
     def to(self, device):
         for processor in self.processors.values():
@@ -315,19 +316,19 @@ class MultiphysicsDataProcessor(torch.nn.Module, metaclass=ABCMeta):
         return self
 
     def preprocess(self, data_dict, batched=True):
-        if self.current_task is None:
-            raise ValueError("Current task is not installed!")
-        return self.processors[self.current_task].preprocess(data_dict, batched)
+        if self.current_physics is None:
+            raise ValueError(f"{self.current_physics} is not installed!")
+        return self.processors[self.current_physics].preprocess(data_dict, batched)
 
     def postprocess(self, output, data_dict):
-        if self.current_task is None:
-            raise ValueError("Current task is not installed!")
-        return self.processors[self.current_task].postprocess(output, data_dict)
+        if self.current_physics is None:
+            raise ValueError(f"{self.current_physics} is not installed!")
+        return self.processors[self.current_physics].postprocess(output, data_dict)
 
     def wrap(self, model):
-        if self.current_task is None:
-            raise ValueError("Current task is not installed!")
-        return self.processors[self.current_task].wrap(model)
+        if self.current_physics is None:
+            raise ValueError(f"{self.current_physics} is not installed!")
+        return self.processors[self.current_physics].wrap(model)
 
     def train(self, val: bool = True):
         for processor in self.processors.values():
@@ -338,9 +339,9 @@ class MultiphysicsDataProcessor(torch.nn.Module, metaclass=ABCMeta):
             processor.eval()
 
     def forward(self, x):
-        if self.current_task is None:
-            raise ValueError("Current task is not installed!")
-        return self.processors[self.current_task].forward(x)
+        if self.current_physics is None:
+            raise ValueError(f"{self.current_physics} is not installed!")
+        return self.processors[self.current_physics].forward(x)
 
 
 class MGPatchingDataProcessor(DataProcessor):

@@ -43,7 +43,7 @@ class MultitaskDataset(MultiphysicsDataset):
                  channel_dim=1,
                  subsampling_rate=None,
                  download_params: dict = None,
-                 task_name: str = None):
+                 physics_name: str = None):
 
         """MultitaskDataset
 
@@ -97,16 +97,16 @@ class MultitaskDataset(MultiphysicsDataset):
             files_to_download = []
             already_downloaded_files = [x.name for x in root_dir.iterdir()]
             for res in resolutions:
-                if f"f{task_name}_train_{res}.pt" not in already_downloaded_files or \
-                        f"f{task_name}_test_{res}.pt" not in already_downloaded_files:
-                    files_to_download.append(f"f{task_name}_{res}.tgz")
+                if f"f{physics_name}_train_{res}.pt" not in already_downloaded_files or \
+                        f"f{physics_name}_test_{res}.pt" not in already_downloaded_files:
+                    files_to_download.append(f"f{physics_name}_{res}.tgz")
                 download_params['files_to_download'] = files_to_download
             download_from_zenodo_record(**download_params)
 
         # Once downloaded/if files already exist, init MultiphysicsDataset
         super().__init__(
             root_dir=root_dir,
-            dataset_name=task_name,
+            dataset_name=physics_name,
             n_train=n_train,
             n_tests=n_tests,
             batch_size=batch_size,
@@ -137,7 +137,7 @@ def load_data(n_train,
               encode_output=True,
               encoding="channel-wise",
               channel_dim=1,
-              task_name=None,
+              physics_name=None,
               download_params=None):
     dataset = MultitaskDataset(
         root_dir=data_root,
@@ -155,7 +155,7 @@ def load_data(n_train,
         channel_dim=channel_dim,
         encoding=encoding,
         download_params=download_params,
-        task_name=task_name
+        physics_name=physics_name
     )
 
     # return dataloaders for backwards compat
