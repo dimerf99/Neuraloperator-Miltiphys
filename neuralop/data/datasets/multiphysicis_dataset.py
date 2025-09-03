@@ -28,85 +28,6 @@ def load_data(root_dir, dataset_name, process_type, resolution, file_format=".pt
         raise ValueError(f"Unknown file format: {file_format}")
 
 
-# class GridPreprocessor:
-#     """ GridPreprocessor resizes and subsample raw data
-#     """
-#
-#     def resize_to_common_grid_batch(self, data, target_grid_shape):
-#         _, *dim_shapes = data.shape
-#         x, y = [np.linspace(0, 1, dim_i) for dim_i in dim_shapes]
-#         interpolator_new = RegularGridInterpolator(
-#             (x, y), data
-#         )
-#         grid_new = np.stack(
-#             list(np.meshgrid(*(np.linspace(0, 1, target_grid_shape) for _ in range(len(dim_shapes))), indexing='ij')),
-#             axis=-1
-#         )
-#         return interpolator_new(grid_new)
-#
-#     def get_mode(self, data):
-#         # `nearest`,
-#         # `linear` (3D-only),
-#         # `bilinear`,
-#         # `bicubic` (4D-only),
-#         # `trilinear` (5D-only),
-#
-#         if data.dtype is torch.bool:
-#             return 'nearest'
-#
-#         if data.shape != 5:
-#             return 'bilinear'
-#         else:
-#             return 'trilinear'
-#
-#     def resize_to_common_grid(self, data, target_resolution, interpolate_mode):
-#         original_shape = data.shape
-#         original_ndim = data.ndim
-#
-#         if torch.all(torch.tensor(original_shape[1:]) == torch.tensor(target_resolution)):
-#             return data
-#
-#         # 4D (B, C, H, W)
-#         if original_ndim == 2:
-#             # (B, X) -> (B, 1, 1, X)
-#             data = data.unsqueeze(1).unsqueeze(2)
-#         elif original_ndim == 3:
-#             # (B, X, Y) -> (B, 1, X, Y)
-#             data = data.unsqueeze(1)
-#
-#         if interpolate_mode is None:
-#             interpolate_mode = self.get_mode(data)
-#
-#         data_resized = F.interpolate(
-#             data.float(),
-#             size=target_resolution,
-#             mode=interpolate_mode,
-#         )
-#
-#         if original_ndim == 2:
-#             data_resized = data_resized.squeeze(1).squeeze(2)
-#         elif original_ndim == 3:
-#             data_resized = data_resized.squeeze(1)
-#
-#         return data_resized
-#
-#     def subsample(self, data, subsampling_rate, n_train, channel_dim):
-#         data_dims = data.ndim - 2
-#
-#         if not subsampling_rate:
-#             subsampling_rate = 1
-#         if not isinstance(subsampling_rate, list):
-#             subsampling_rate = [subsampling_rate] * data_dims
-#         assert len(subsampling_rate) == data_dims, \
-#             f"Error: length mismatch between input_subsampling_rate and dimensions of data.\
-#                         input_subsampling_rate must be one int shared across all dims, or an iterable of\
-#                             length {len(data_dims)}, got {subsampling_rate}"
-#
-#         train_indices = [slice(0, n_train, None)] + [slice(None, None, rate) for rate in subsampling_rate]
-#         train_indices.insert(channel_dim, slice(None))
-#         return data[train_indices]
-
-
 def resize_to_common_grid_batch(data, target_grid_shape):
     _, *dim_shapes = data.shape
     x, y = [np.linspace(0, 1, dim_i) for dim_i in dim_shapes]
@@ -121,16 +42,10 @@ def resize_to_common_grid_batch(data, target_grid_shape):
 
 
 def get_mode(data):
-    # `nearest`,
-    # `linear` (3D-only),
-    # `bilinear`,
-    # `bicubic` (4D-only),
-    # `trilinear` (5D-only),
-
     if data.dtype is torch.bool:
         return 'nearest'
 
-    if data.shape != 5:
+    if len(data.shape) != 5:
         return 'bilinear'
     else:
         return 'trilinear'
@@ -147,6 +62,7 @@ def resize_to_common_grid(data, target_resolution, interpolate_mode):
     if original_ndim == 2:
         # (B, X) -> (B, 1, 1, X)
         data = data.unsqueeze(1).unsqueeze(2)
+        target_resolution = (1, target_resolution)
     elif original_ndim == 3:
         # (B, X, Y) -> (B, 1, X, Y)
         data = data.unsqueeze(1)
@@ -157,13 +73,8 @@ def resize_to_common_grid(data, target_resolution, interpolate_mode):
     data_resized = F.interpolate(
         data.float(),
         size=target_resolution,
-        mode=interpolate_mode,
-    )
-
-    if original_ndim == 2:
-        data_resized = data_resized.squeeze(1).squeeze(2)
-    elif original_ndim == 3:
-        data_resized = data_resized.squeeze(1)
+        mode=interpolate_mode
+    ).squeeze()
 
     return data_resized
 
