@@ -22,9 +22,9 @@ class BurgersDatasetConfig(ConfigBase):
     test_resolutions: List[int] = [32]
     test_batch_sizes: List[int] = [16]
     n_tests: List[int] = [400]
-    spatial_length: int = 16
-    temporal_length: int = 17
+    spatial_subsample: Optional[int] = None
     temporal_subsample: Optional[int] = None
+    interpolate_mode: Optional[str] = None  # 'nearest'
     encode_input: bool = False
     encode_output: bool = True
     include_endpoint: List[bool] = [True, False]
@@ -38,8 +38,11 @@ class BurgersDatasetConfig(ConfigBase):
 class DarcyDatasetConfig(ConfigBase):
     train_resolution: int = 32
     test_resolutions: List[int] = [32]
-    n_tests: List[int] = [100]
     test_batch_sizes: List[int] = [16]
+    n_tests: List[int] = [100]
+    spatial_subsample: Optional[int] = None
+    temporal_subsample: Optional[int] = None
+    interpolate_mode: Optional[str] = None  # 'bilinear'
     encode_input: bool = True
     encode_output: bool = True
     download_params: Dict[str, Any] = {
