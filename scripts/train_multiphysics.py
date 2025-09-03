@@ -61,30 +61,30 @@ def main():
 
     multiphysics_data = {}
 
-    for task_name in list(config.data.datasets.keys()):
-        task_config = config.data.datasets[task_name]
+    for physics_name in list(config.data.datasets.keys()):
+        physics_config = config.data.datasets[physics_name]
         data_root = get_project_root() / config.data.folder
 
         task_config_full = {
             'n_train': config.data.n_train,
-            'n_tests': task_config.n_tests,
+            'n_tests': physics_config.n_tests,
             'batch_size': config.data.batch_size,
-            'train_resolution': task_config.train_resolution,
-            'test_resolutions': task_config.test_resolutions,
-            'test_batch_sizes': task_config.test_batch_sizes,
-            'interpolate_mode': task_config.interpolate_mode,
+            'train_resolution': physics_config.train_resolution,
+            'test_resolutions': physics_config.test_resolutions,
+            'test_batch_sizes': physics_config.test_batch_sizes,
+            'interpolate_mode': physics_config.interpolate_mode,
             'data_root': data_root,
-            'encode_input': task_config.encode_input,
-            'encode_output': task_config.encode_output,
-            'task_name': task_name,
-            'download_params': task_config.download_params,
-            'temporal_subsample': task_config.temporal_subsample,
-            'spatial_subsample': task_config.spatial_subsample,
+            'encode_input': physics_config.encode_input,
+            'encode_output': physics_config.encode_output,
+            'physics_name': physics_name,
+            'download_params': physics_config.download_params,
+            'temporal_subsample': physics_config.temporal_subsample,
+            'spatial_subsample': physics_config.spatial_subsample,
         }
 
         train_loader, test_loaders, data_processor = load_data(**task_config_full)
 
-        multiphysics_data[task_name] = {
+        multiphysics_data[physics_name] = {
             'train_loader': train_loader,
             'test_loaders': test_loaders,
             'data_processor': data_processor
@@ -92,11 +92,15 @@ def main():
 
     model = get_model(config)
 
-    for task_name, task_data in multiphysics_data.items():
+    for physics_name, physics_data in multiphysics_data.items():
         if config.patching.levels > 0:
-            task_data['data_processor'] = MultiTaskMGPatchingDataProcessor(
+            physics_data['data_processor'] = MultiTaskMGPatchingDataProcessor(
                 model=model,
-                tasks_config=task_config,
+                physics_config=physics_config,
+                padding_fraction=config.patching.padding,
+                stitching=config.patching.stitching,
+                levels=config.patching.levels,
+                use_distributed=config.distributed.use_distributed,
                 device=device
             )
 
