@@ -6,7 +6,7 @@ from typing import Union, List, Dict
 from torch.utils.data import DataLoader
 
 from .multiphysicis_dataset import MultiphysicsDataset
-from .web_utils import download_record
+from neuralop.data.datasets.web_utils import download_from_zenodo_record
 
 from neuralop.utils import get_project_root
 
@@ -17,8 +17,6 @@ class MultitaskDataset(MultiphysicsDataset):
     """
     MultitaskDataset stores data generated according to set of tasks.
     Input is a coefficient function and outputs describe flow.
-
-    Data source: https://zenodo.org/records/12784353
 
     Attributes
     ----------
@@ -36,6 +34,9 @@ class MultitaskDataset(MultiphysicsDataset):
                  test_batch_sizes: List[int],
                  train_resolution: int,
                  test_resolutions: List[int] = [16, 32],
+                 temporal_subsample: int = 1,
+                 spatial_subsample: int = 1,
+                 interpolate_mode: str = None,
                  encode_input: bool = False,
                  encode_output: bool = True,
                  encoding="channel-wise",
@@ -91,7 +92,7 @@ class MultitaskDataset(MultiphysicsDataset):
         # List of resolutions needed for dataset object
         resolutions = set(test_resolutions + [train_resolution])
 
-        # download data from source (zenodo, pdebench) archive if passed
+        # Download data from source (zenodo, pdebench) archive if passed
         if download_params['download']:
             files_to_download = []
             already_downloaded_files = [x.name for x in root_dir.iterdir()]
@@ -100,9 +101,9 @@ class MultitaskDataset(MultiphysicsDataset):
                         f"f{task_name}_test_{res}.pt" not in already_downloaded_files:
                     files_to_download.append(f"f{task_name}_{res}.tgz")
                 download_params['files_to_download'] = files_to_download
-            download_record(**download_params)
+            download_from_zenodo_record(**download_params)
 
-        # once downloaded/if files already exist, init MultiphysicsDataset
+        # Once downloaded/if files already exist, init MultiphysicsDataset
         super().__init__(
             root_dir=root_dir,
             dataset_name=task_name,
@@ -112,12 +113,13 @@ class MultitaskDataset(MultiphysicsDataset):
             test_batch_sizes=test_batch_sizes,
             train_resolution=train_resolution,
             test_resolutions=test_resolutions,
+            interpolate_mode=interpolate_mode,
             encode_input=encode_input,
             encode_output=encode_output,
             encoding=encoding,
             channel_dim=channel_dim,
             input_subsampling_rate=subsampling_rate,
-            output_subsampling_rate=subsampling_rate
+            output_subsampling_rate=[temporal_subsample, spatial_subsample]
         )
 
 
@@ -127,7 +129,10 @@ def load_data(n_train,
               test_batch_sizes,
               data_root,
               train_resolution=16,
+              temporal_subsample: int = 1,
+              spatial_subsample: int = 1,
               test_resolutions=[16, 32],
+              interpolate_mode=None,
               encode_input=False,
               encode_output=True,
               encoding="channel-wise",
@@ -142,6 +147,9 @@ def load_data(n_train,
         test_batch_sizes=test_batch_sizes,
         train_resolution=train_resolution,
         test_resolutions=test_resolutions,
+        temporal_subsample=temporal_subsample,
+        spatial_subsample=spatial_subsample,
+        interpolate_mode=interpolate_mode,
         encode_input=encode_input,
         encode_output=encode_output,
         channel_dim=channel_dim,
