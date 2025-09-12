@@ -4,8 +4,12 @@ import wandb
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.nn.functional as F
 
-from neuralop import H1Loss, LpLoss, BurgersEqnLoss, ICLoss, WeightedSumLoss, Trainer, get_model
-from neuralop.data.datasets import load_mini_burgers_1dtime
+from neuralop.losses.data_losses import H1Loss, LpLoss
+from neuralop.models.base_model import get_model
+from neuralop.training.trainer import Trainer
+from neuralop.losses.equation_losses import BurgersEqnLoss, ICLoss
+from neuralop.losses.meta_losses import WeightedSumLoss
+from neuralop.data.datasets.burgers import load_mini_burgers_1dtime
 from neuralop.data.transforms.data_processors import MGPatchingDataProcessor
 from neuralop.training import setup, AdamW
 from neuralop.utils import get_wandb_api_key, count_model_params, get_project_root
