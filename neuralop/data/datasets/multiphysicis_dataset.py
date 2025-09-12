@@ -8,24 +8,8 @@ from typing import List, Union
 from scipy.interpolate import RegularGridInterpolator
 
 from .tensor_dataset import TensorDataset
-from ..transforms.data_processors import MultiphysicsDataProcessor
-from ..transforms.normalizers import MultiphysicsUnitGaussianNormalizer
-
-
-def load_data(root_dir, dataset_name, process_type, resolution, file_format=".pt"):
-    file_path = Path(root_dir).joinpath(f"{dataset_name}_{process_type}_16{file_format}")
-
-    if file_format == ".pt":
-        data = torch.load(file_path.as_posix())
-        return data
-    elif file_format == ".h5":
-        with h5py.File(file_path, "r") as f:
-            keys = list(f.keys())
-            print(f"File {file_path} includes: {keys}")
-            data = {key: f[key][:] for key in keys}
-        return data
-    else:
-        raise ValueError(f"Unknown file format: {file_format}")
+from ..transforms.data_processors import DefaultDataProcessor
+from ..transforms.normalizers import UnitGaussianNormalizer
 
 
 def resize_to_common_grid_batch(data, target_grid_shape):
@@ -58,7 +42,7 @@ def resize_to_common_grid(data, target_resolution, interpolate_mode):
     if torch.all(torch.tensor(original_shape[1:]) == torch.tensor(target_resolution)):
         return data
 
-    # 4D (B, C, H, W)
+    # (B, C, H, W)
     if original_ndim == 2:
         # (B, X) -> (B, 1, 1, X)
         data = data.unsqueeze(1).unsqueeze(2)
@@ -130,7 +114,8 @@ class MultiphysicsDataset:
                  output_subsampling_rate=None,
                  channel_dim=1,
                  channels_squeezed=True,
-                 physics_name: str = None):
+                 physics_name: str = None
+                 ):
         """MultiphysicsDataset
 
         Parameters
@@ -173,64 +158,78 @@ class MultiphysicsDataset:
             Only applies when there is only one data channel, as in our example problems
             Defaults to True
         """
-
         if isinstance(root_dir, str):
             root_dir = Path(root_dir)
 
         self.root_dir = root_dir
         self.batch_size = batch_size
+        self.train_resolution = train_resolution
         self.test_resolutions = test_resolutions
         self.test_batch_sizes = test_batch_sizes
+        self.physics_name = physics_name
+        self.interpolate_mode = interpolate_mode
+        self.channel_dim = channel_dim
+        self.channels_squeezed = channels_squeezed
+        self.input_subsampling_rate = input_subsampling_rate
+        self.output_subsampling_rate = output_subsampling_rate
+        self.n_train = n_train
+        self.n_tests = n_tests
+        self.encode_input = encode_input
+        self.encode_output = encode_output
+        self.encoding = encoding
 
+    def load_data(self, process_type, file_format=".pt"):
+        file_path = Path(self.root_dir).joinpath(f"{self.physics_name}_{process_type}_16{file_format}")
+
+        if file_format == ".pt":
+            data = torch.load(file_path.as_posix())
+            return data
+        elif file_format == ".h5":
+            with h5py.File(file_path, "r") as f:
+                keys = list(f.keys())
+                print(f"File {file_path} includes: {keys}")
+                data = {key: f[key][:] for key in keys}
+            return data
+        else:
+            raise ValueError(f"Unknown file format: {file_format}")
+
+    def preprocess_raw_data(self, data):
+        data["x"] = resize_to_common_grid(data["x"], self.train_resolution, self.interpolate_mode)
+        data["y"] = resize_to_common_grid(data["y"], self.train_resolution, self.interpolate_mode)
+
+        x = data["x"].type(torch.float32).clone()
+        y = data["y"].type(torch.float32).clone()
+
+        if self.channels_squeezed:
+            x = x.unsqueeze(self.channel_dim)
+            y = y.unsqueeze(self.channel_dim)
+
+        x = subsample(x, self.input_subsampling_rate, self.n_train, self.channel_dim)
+        y = subsample(y, self.output_subsampling_rate, self.n_train, self.channel_dim)
+        return x, y
+
+    def normalize(self, data):
+        if not self.encode_input:
+            return None
+        else:
+            if self.encoding == "channel-wise":
+                reduce_dims = list(range(data.ndim))
+                reduce_dims.pop(self.channel_dim)
+            elif self.encoding == "pixel-wise":
+                reduce_dims = [0]
+
+            encoder = UnitGaussianNormalizer(dim=reduce_dims)
+            encoder.fit(data)
+            return encoder
+
+    def data_preprocessing_pipline(self):
         # Load train data
-        data = load_data(root_dir, physics_name, 'train', train_resolution, file_format='.pt')
+        train_data = self.load_data('train', file_format='.pt')
+        x_train, y_train = self.preprocess_raw_data(train_data)
+        del train_data
 
-        data["x"] = resize_to_common_grid(data["x"], train_resolution, interpolate_mode)
-        data["y"] = resize_to_common_grid(data["y"], train_resolution, interpolate_mode)
-
-        x_train = data["x"].type(torch.float32).clone()
-        y_train = data["y"].type(torch.float32).clone()
-
-        if channels_squeezed:
-            x_train = x_train.unsqueeze(channel_dim)
-            y_train = y_train.unsqueeze(channel_dim)
-
-        x_train = subsample(x_train, input_subsampling_rate, n_train, channel_dim)
-        y_train = subsample(y_train, output_subsampling_rate, n_train, channel_dim)
-
-        del data
-
-        if encode_input:
-            if encoding == "channel-wise":
-                reduce_dims = list(range(x_train.ndim))
-                reduce_dims.pop(channel_dim)
-            elif encoding == "pixel-wise":
-                reduce_dims = [0]
-
-            if not hasattr(self, 'input_normalizer'):
-                self.input_encoder = MultiphysicsUnitGaussianNormalizer()
-
-            self.input_encoder.add_task(physics_name, dim=reduce_dims)
-            self.input_encoder.set_task(physics_name)
-            self.input_encoder.fit(x_train)
-        else:
-            self.input_encoder = None
-
-        if encode_output:
-            if encoding == "channel-wise":
-                reduce_dims = list(range(y_train.ndim))
-                reduce_dims.pop(channel_dim)
-            elif encoding == "pixel-wise":
-                reduce_dims = [0]
-
-            if not hasattr(self, 'output_normalizer'):
-                self.output_encoder = MultiphysicsUnitGaussianNormalizer()
-
-            self.output_encoder.add_task(physics_name, dim=reduce_dims)
-            self.output_encoder.set_task(physics_name)
-            self.output_encoder.fit(y_train)
-        else:
-            self.output_encoder = None
+        input_encoder = self.normalize(x_train)
+        output_encoder = self.normalize(y_train)
 
         # Save train dataset
         self._train_db = TensorDataset(
@@ -238,31 +237,17 @@ class MultiphysicsDataset:
             y_train,
         )
 
-        self._data_processor = MultiphysicsDataProcessor(in_normalizer=self.input_encoder,
-                                                         out_normalizer=self.output_encoder)
-        self._data_processor.add_processor(physics_name)
+        self._data_processor = DefaultDataProcessor(in_normalizer=input_encoder,
+                                                    out_normalizer=output_encoder)
 
-        # Load test data
         self._test_dbs = {}
-        for (res, n_test) in zip(test_resolutions, n_tests):
+        for (res, n_test) in zip(self.test_resolutions, self.n_tests):
             print(f"Loading test db for resolution {res} with {n_test} samples ")
 
-            data = load_data(root_dir, physics_name, 'test', res, file_format='.pt')
-
-            data["x"] = resize_to_common_grid(data["x"], res, interpolate_mode)
-            data["y"] = resize_to_common_grid(data["y"], res, interpolate_mode)
-
-            x_test = data["x"].type(torch.float32).clone()
-            y_test = data["y"].type(torch.float32).clone()
-
-            if channels_squeezed:
-                x_test = x_test.unsqueeze(channel_dim)
-                y_test = y_test.unsqueeze(channel_dim)
-
-            x_test = subsample(x_test, input_subsampling_rate, n_test, channel_dim)
-            y_test = subsample(y_test, output_subsampling_rate, n_test, channel_dim)
-
-            del data
+            # Load test data
+            test_data = self.load_data('test', file_format='.pt')
+            x_test, y_test = self.preprocess_raw_data(test_data)
+            del test_data
 
             # Save test dataset
             test_db = TensorDataset(
