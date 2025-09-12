@@ -1,14 +1,11 @@
 import logging
-import os
 from pathlib import Path
-from typing import Union, List, Dict
+from typing import Union, List
 
 from torch.utils.data import DataLoader
 
 from .multiphysicis_dataset import MultiphysicsDataset
 from neuralop.data.datasets.web_utils import download_from_zenodo_record
-
-from neuralop.utils import get_project_root
 
 logger = logging.Logger(logging.root.level)
 
@@ -119,8 +116,9 @@ class MultitaskDataset(MultiphysicsDataset):
             encoding=encoding,
             channel_dim=channel_dim,
             input_subsampling_rate=subsampling_rate,
-            output_subsampling_rate=[temporal_subsample, spatial_subsample]
+            output_subsampling_rate=[temporal_subsample, spatial_subsample],
         )
+        super().data_preprocessing_pipline()
 
 
 def load_data(n_train,
@@ -139,6 +137,7 @@ def load_data(n_train,
               channel_dim=1,
               physics_name=None,
               download_params=None):
+
     dataset = MultitaskDataset(
         root_dir=data_root,
         n_train=n_train,
@@ -155,7 +154,7 @@ def load_data(n_train,
         channel_dim=channel_dim,
         encoding=encoding,
         download_params=download_params,
-        physics_name=physics_name
+        physics_name=physics_name,
     )
 
     # return dataloaders for backwards compat
