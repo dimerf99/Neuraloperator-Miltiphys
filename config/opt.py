@@ -1,6 +1,7 @@
 from typing import Optional, Literal
 from zencfg import ConfigBase
 
+
 class OptimizationConfig(ConfigBase):
     n_epochs: int
     training_loss: Literal['h1', 'l2'] = "h1"
@@ -15,7 +16,15 @@ class OptimizationConfig(ConfigBase):
     step_size: int = 100
     gamma: float = 0.5
 
+
+# class PatchingConfig(ConfigBase):
+#     levels: int = 1
+#     padding: int = 16
+#     stitching: bool = True
+
+
 class PatchingConfig(ConfigBase):
     levels: int = 0
     padding: int = 0
     stitching: bool = False
+
