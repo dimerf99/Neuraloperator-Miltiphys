@@ -291,19 +291,13 @@ class IncrementalDataProcessor(torch.nn.Module):
 class MultiphysicsDataProcessor(torch.nn.Module, metaclass=ABCMeta):
     """Multiphysics version of DataProcessor"""
 
-    def __init__(
-            self,
-            in_normalizer,
-            out_normalizer
-    ):
+    def __init__(self):
         super().__init__()
-        self.in_normalizer = in_normalizer
-        self.out_normalizer = out_normalizer
         self.current_physics = None
         self.processors = {}
 
-    def add_processor(self, physics_name: str):
-        self.processors[physics_name] = DefaultDataProcessor(self.in_normalizer, self.out_normalizer)
+    def add_processor(self, physics_name: str, in_normalizer, out_normalizer):
+        self.processors[physics_name] = DefaultDataProcessor(in_normalizer, out_normalizer)
 
     def set_task(self, physics_name: str):
         if physics_name not in self.processors:
@@ -497,8 +491,8 @@ class MultiTaskMGPatchingDataProcessor(DataProcessor):
         self.in_normalizers = {}
         self.out_normalizers = {}
 
-        for task_name, config in physics_config.items():
-            self.patchers[task_name] = MultigridPatching2D(
+        for physics_name, config in physics_config.items():
+            self.patchers[physics_name] = MultigridPatching2D(
                 model=model,
                 levels=levels,
                 padding_fraction=padding_fraction,
@@ -506,13 +500,13 @@ class MultiTaskMGPatchingDataProcessor(DataProcessor):
                 use_distributed=use_distributed,
             )
 
-            self.in_normalizers[task_name] = config.get('in_normalizer')
-            self.out_normalizers[task_name] = config.get('out_normalizer')
+            self.in_normalizers[physics_name] = config.get('in_normalizer')
+            self.out_normalizers[physics_name] = config.get('out_normalizer')
 
-            if self.in_normalizers[task_name]:
-                self.in_normalizers[task_name] = self.in_normalizers[task_name].to(device)
-            if self.out_normalizers[task_name]:
-                self.out_normalizers[task_name] = self.out_normalizers[task_name].to(device)
+            if self.in_normalizers[physics_name]:
+                self.in_normalizers[physics_name] = self.in_normalizers[physics_name].to(device)
+            if self.out_normalizers[physics_name]:
+                self.out_normalizers[physics_name] = self.out_normalizers[physics_name].to(device)
 
         self.current_task = None
 
