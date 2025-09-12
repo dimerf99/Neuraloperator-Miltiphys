@@ -25,7 +25,7 @@ class BurgersDatasetConfig(ConfigBase):
     spatial_subsample: Optional[int] = None
     temporal_subsample: Optional[int] = None
     interpolate_mode: Optional[str] = None  # 'nearest'
-    encode_input: bool = False
+    encode_input: bool = True
     encode_output: bool = True
     include_endpoint: List[bool] = [True, False]
     download_params: Dict[str, Any] = {
@@ -57,15 +57,9 @@ class MultiphysicsDatasetConfig(ConfigBase):
     batch_size: int = 8
     n_train: int = 1000
     datasets: Dict[str, Any] = {
-        'darcy': DarcyDatasetConfig(),
-        'burgers': BurgersDatasetConfig()
+        'burgers': BurgersDatasetConfig(),
+        'darcy': DarcyDatasetConfig()
     }
-
-
-class Patching(ConfigBase):
-    levels: int = 1
-    padding: int = 16
-    stitching: bool = True
 
 
 class Default(ConfigBase):
