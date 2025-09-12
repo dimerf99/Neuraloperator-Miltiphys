@@ -259,30 +259,30 @@ class MultiphysicsUnitGaussianNormalizer(Transform):
     def __init__(self):
         super().__init__()
         self.normalizers = {}
-        self.current_task = None
+        self.current_physics = None
 
-    def add_task(self, task_name: str, dim=None, mask=None):
-        self.normalizers[task_name] = UnitGaussianNormalizer(dim=dim, mask=mask)
+    def add_physics(self, physics_name: str, dim=None, mask=None):
+        self.normalizers[physics_name] = UnitGaussianNormalizer(dim=dim, mask=mask)
 
-    def set_task(self, task_name: str):
-        if task_name not in self.normalizers:
-            raise ValueError(f"Normalizer for task '{task_name}' not found!")
-        self.current_task = task_name
+    def set_physics(self, physics_name: str):
+        if physics_name not in self.normalizers:
+            raise ValueError(f"Normalizer for physics '{physics_name}' not found!")
+        self.current_physics = physics_name
 
     def fit(self, data_batch):
-        if self.current_task is None:
-            raise ValueError("Current task is not installed!")
-        self.normalizers[self.current_task].fit(data_batch)
+        if self.current_physics is None:
+            raise ValueError("Current physics is not installed!")
+        self.normalizers[self.current_physics].fit(data_batch)
 
     def transform(self, x):
-        if self.current_task is None:
-            raise ValueError("Current task is not installed!")
-        return self.normalizers[self.current_task].transform(x)
+        if self.current_physics is None:
+            raise ValueError("Current physics is not installed!")
+        return self.normalizers[self.current_physics].transform(x)
 
     def inverse_transform(self, x):
-        if self.current_task is None:
-            raise ValueError("Current task is not installed!")
-        return self.normalizers[self.current_task].inverse_transform(x)
+        if self.current_physics is None:
+            raise ValueError("Current physics is not installed!")
+        return self.normalizers[self.current_physics].inverse_transform(x)
 
     def to(self, device):
         for normalizer in self.normalizers.values():
