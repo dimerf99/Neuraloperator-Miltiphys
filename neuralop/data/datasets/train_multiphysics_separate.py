@@ -1,16 +1,6 @@
-import torch
-
-from torch.utils.data import DataLoader, DistributedSampler
-import wandb
-
-from neuralop.losses.data_losses import H1Loss, LpLoss
-from neuralop.models.base_model import get_model
-from neuralop.training.trainer import Trainer
 from neuralop.data.datasets.multiphysics_wrapper import load_data
-from neuralop.data.transforms.data_processors import MultiTaskMGPatchingDataProcessor
-from neuralop.training import setup, AdamW
-from neuralop.mpu.comm import get_local_rank
-from neuralop.utils import get_wandb_api_key, count_model_params, get_project_root
+from neuralop.training import setup
+from neuralop.utils import get_project_root
 
 from zencfg import make_config_from_cli
 import sys
@@ -62,9 +52,7 @@ def main():
             'test_loaders': test_loaders,
             'data_processor': data_processor
         }
-
-    model = get_model(config)
-
+    
 
 if __name__ == '__main__':
     main()
